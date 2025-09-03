@@ -22,6 +22,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from moviepy import VideoClip
 import re
+import random  # Agrega esta importación
 
 try:
     import torch
@@ -90,7 +91,7 @@ def draw_gradient_bar(draw: ImageDraw.ImageDraw, x1,y1,x2,y2, color_left=(255,0,
         b = int(round(color_left[2]*(1-t) + color_right[2]*t))
         draw.line([(x1+i, y1), (x1+i, y2-1)], fill=(r,g,b))
 
-def render_bars_text(panel_w:int, H:int, name:str, font_path:Optional[str], sep_right:int) -> np.ndarray:
+def render_bars_text(panel_w:int, H:int, name:str, label:str, font_path:Optional[str], sep_right:int) -> np.ndarray:
     top_h, name_h, label_h, bot_h = calc_heights(H)
     img = Image.new("RGB",(panel_w,H),(0,0,0))
     d = ImageDraw.Draw(img)
@@ -110,9 +111,8 @@ def render_bars_text(panel_w:int, H:int, name:str, font_path:Optional[str], sep_
         cx = (panel_w - lw)//2
         d.text((cx,cy), ln, font=font_main, fill=(255,255,255), stroke_width=2, stroke_fill=(0,0,0))
         cy += lh + gap
-    # Label fijo
+    # Label desde abajo.txt
     font_lbl  = load_font(font_path, max(9, int(label_h*0.60)))
-    label = "SUPERMAN (2025)"
     bbox = d.textbbox((0,0), label, font=font_lbl, stroke_width=2)
     lw=bbox[2]-bbox[0]; lh=bbox[3]-bbox[1]
     lb_y1 = top_h+name_h
@@ -231,12 +231,17 @@ def main():
     arriba = sorted(glob.glob(os.path.join(root,"arriba","*")), key=natural_key)
     abajo  = sorted(glob.glob(os.path.join(root,"abajo","*")), key=natural_key)
     names_file = os.path.join(root,"nombres.txt")
+    abajo_names_file = os.path.join(root,"abajo.txt")  # <-- Nuevo archivo
     if not os.path.exists(names_file):
         raise SystemExit("Falta nombres.txt")
+    if not os.path.exists(abajo_names_file):
+        raise SystemExit("Falta abajo.txt")
     with open(names_file,encoding="utf-8") as f:
         nombres = [ln.strip() for ln in f if ln.strip()]
-    if not (len(arriba)==len(abajo)==len(nombres)):
-        raise SystemExit("arriba, abajo y nombres.txt deben tener la MISMA cantidad")
+    with open(abajo_names_file,encoding="utf-8") as f:
+        abajo_nombres = [ln.strip() for ln in f if ln.strip()]
+    if not (len(arriba)==len(abajo)==len(nombres)==len(abajo_nombres)):
+        raise SystemExit("arriba, abajo, nombres.txt y abajo.txt deben tener la MISMA cantidad")
     N = len(nombres)
 
     top_h, name_h, label_h, bot_h = calc_heights(H)
@@ -246,7 +251,7 @@ def main():
     bot_np = []
     for i in range(N):
         sep_right = args.sep_px if i!=N-1 else 0
-        bars_list.append(render_bars_text(panel_w, H, nombres[i], args.font_path, sep_right))
+        bars_list.append(render_bars_text(panel_w, H, nombres[i], abajo_nombres[i], args.font_path, sep_right))
         with Image.open(arriba[i]) as T:
             top_np.append(np.array(fit_cover(T,(panel_w, top_h)).convert("RGB")))
         with Image.open(abajo[i]) as B:
@@ -302,6 +307,29 @@ def main():
         return img_np
 
     clip = VideoClip(make_frame, duration=duration)
+
+    # --- AUDIO RANDOM --- (ELIMINADO)
+    # musica_dir = os.path.join(root, "musica")
+    # audio_files = glob.glob(os.path.join(musica_dir, "*"))
+    # audio_files = [f for f in audio_files if f.lower().endswith((".mp3",".wav",".ogg",".m4a"))]
+    # if not audio_files:
+    #     print("[WARN] No se encontró música en la carpeta 'musica'. El video no tendrá audio.")
+    #     audio_clip = None
+    # else:
+    #     audio_path = random.choice(audio_files)
+    #     print(f"[AUDIO] Usando música: {os.path.basename(audio_path)}")
+    #     audio_clip = AudioFileClip(audio_path)
+    #     # Repite el audio hasta la duración del video
+    #     if audio_clip.duration < duration:
+    #         n_loops = int(duration // audio_clip.duration) + 1
+    #         audio_clip = audio_clip.fx(
+    #             lambda c: c.loop(n_loops)
+    #         ).subclip(0, duration)
+    #     else:
+    #         audio_clip = audio_clip.subclip(0, duration)
+    #     clip = clip.set_audio(audio_clip)
+    # --- FIN AUDIO ---
+
     codec, params, preset = pick_best_gpu_codec_force()  # <-- Fuerza NVENC
     out_path = os.path.join(root, "marvel_scroll_finite_3col_pink_montserrat_reveal_SMOOTHv2_CUDA.mp4")
     print(f"[export] size={W}x{H} fps={args.fps} speed={args.scroll_speed}px/s duration={duration:.2f}s ease={args.ease} device={device}")
